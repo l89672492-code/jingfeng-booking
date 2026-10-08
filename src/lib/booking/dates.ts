@@ -27,6 +27,17 @@ export function taipeiToday(now: Date = new Date()): string {
   }).format(now);
 }
 
+/** 台灣時間的現在時刻（HH:MM:SS） */
+export function taipeiTimeNow(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+}
+
 /** 檢查是否為合法的 YYYY-MM-DD 日期 */
 export function isValidIsoDate(value: string): boolean {
   if (!ISO_DATE_PATTERN.test(value)) return false;
