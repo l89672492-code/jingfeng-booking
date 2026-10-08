@@ -1,4 +1,10 @@
-import type { BookingStatus } from "@/types/database";
+import type { BookingStatus, PricingDayType } from "@/types/database";
+
+export const PRICING_DAY_TYPE_LABELS: Record<PricingDayType, string> = {
+  weekday: "平日",
+  holiday: "假日",
+  special: "特殊日期",
+};
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   pending: "待確認",
