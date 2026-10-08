@@ -1,16 +1,21 @@
+import "server-only";
+
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import type { Database } from "@/types/database";
 
-import { getSupabaseEnv } from "./env";
+import { getSupabasePublicEnv } from "./env";
 
-/** 供 Server Component、Server Function、Route Handler 使用的 Supabase client。 */
+/**
+ * 伺服器端 Supabase client（供 Server Component、Server Function、Route Handler 使用）。
+ * 使用 publishable key 並帶入使用者 cookie，權限與瀏覽器端相同，受 RLS 控管。
+ */
 export async function createClient() {
-  const { url, anonKey } = getSupabaseEnv();
+  const { url, publishableKey } = getSupabasePublicEnv();
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(url, anonKey, {
+  return createServerClient<Database>(url, publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
