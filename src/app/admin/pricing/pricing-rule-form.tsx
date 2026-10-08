@@ -5,13 +5,13 @@ import { useState } from "react";
 import { buttonBrand, buttonSmall } from "@/components/ui/styles";
 import { formatTime } from "@/lib/booking/dates";
 import { PRICING_DAY_TYPE_LABELS } from "@/lib/booking/status";
-import { addOneHour, hourlyOptions } from "@/lib/booking/time-options";
+import { addOneHour, timeOptions } from "@/lib/booking/time-options";
 import type { PricingDayType, PricingRuleRow } from "@/types/database";
 
 import { MessageText, useMutation } from "../_components/use-mutation";
 import { savePricingRuleAction, togglePricingRuleAction } from "../config-actions";
 
-const HOURS = hourlyOptions();
+const HOURS = timeOptions();
 const cell = "rounded-lg border border-zinc-300 bg-white px-2 py-1.5";
 
 type Props = { rule: PricingRuleRow | null };

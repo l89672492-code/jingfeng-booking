@@ -17,7 +17,7 @@ async function NewBookingForm({ searchParams }: { searchParams: Promise<Search> 
 
   // 從場地表點「可租」進來時會帶入日期、時間、場地
   const date = params.date && isValidIsoDate(params.date) ? params.date : taipeiToday();
-  const startTime = params.start && /^\d{2}:00$/.test(params.start) ? params.start : "19:00";
+  const startTime = params.start && /^\d{2}:[03]0$/.test(params.start) ? params.start : "19:00";
   const courtId = courts.some((court) => court.id === params.court) ? (params.court as string) : "";
 
   return (

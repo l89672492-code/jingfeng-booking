@@ -13,7 +13,7 @@ import {
   labelClass,
 } from "@/components/ui/styles";
 import { BOOKING_STATUS_LABELS } from "@/lib/booking/status";
-import { addOneHour, hourlyOptions } from "@/lib/booking/time-options";
+import { addOneHour, timeOptions } from "@/lib/booking/time-options";
 import { BOOKING_STATUSES } from "@/lib/booking/validation";
 import type { BookingStatus, CourtRow } from "@/types/database";
 
@@ -38,7 +38,7 @@ type Props = {
   initialValues: AdminBookingFormValues;
 };
 
-const HOURS = hourlyOptions();
+const HOURS = timeOptions();
 
 export function AdminBookingForm({ bookingId, courts, initialValues }: Props) {
   const router = useRouter();

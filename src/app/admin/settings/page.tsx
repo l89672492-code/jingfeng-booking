@@ -19,7 +19,8 @@ async function SettingsContent() {
     <section className={`${cardClass} max-w-xl`}>
       <SettingsForm initial={values} />
       <p className="mt-4 text-sm text-zinc-500">
-        租借單位目前為 {values.slot_duration_minutes ?? "60"} 分鐘（第一版固定，不開放修改）。
+        每次租借 {values.slot_duration_minutes ?? "60"} 分鐘，開始時間每 {values.slot_step_minutes ?? "30"}{" "}
+        分鐘一個選項（第一版固定，不開放修改）。
       </p>
     </section>
   );

@@ -159,6 +159,28 @@ describe("建立預約", () => {
     expect(booking.status).toBe("confirmed");
   });
 
+  it("可以預約半點開始的時段（19:30–20:30）", async () => {
+    const date = nextDate(WEEKDAYS);
+    const booking = await createBooking({ courtId: courtA, date, start: "19:30", end: "20:30" });
+    expect(booking.status).toBe("confirmed");
+    expect(booking.price).toBe(500);
+  });
+
+  it("半點時段與整點時段重疊時不能同時預約", async () => {
+    const date = nextDate(WEEKDAYS);
+    await createBooking({ courtId: courtA, date, start: "19:00", end: "20:00" });
+    await expect(
+      createBooking({ courtId: courtA, date, start: "19:30", end: "20:30", phone: "0922333444" }),
+    ).rejects.toThrow("BOOKING_CONFLICT");
+    await expect(
+      createBooking({ courtId: courtA, date, start: "18:30", end: "19:30", phone: "0922333444" }),
+    ).rejects.toThrow("BOOKING_CONFLICT");
+    // 剛好接續不算重疊
+    await expect(
+      createBooking({ courtId: courtA, date, start: "20:00", end: "21:00", phone: "0922333444" }),
+    ).resolves.toMatchObject({ status: "confirmed" });
+  });
+
   it("4. 不同日期可以預約", async () => {
     const date = nextDate(WEEKDAYS);
     await createBooking({ courtId: courtA, date, start: "19:00", end: "20:00" });
@@ -256,9 +278,9 @@ describe("建立預約", () => {
     await expect(
       createBooking({ courtId: courtA, date, start: "22:00", end: "23:00" }),
     ).rejects.toThrow("OUTSIDE_BUSINESS_HOURS");
-    // 不對齊整點、或一次超過一個時段
+    // 不對齊 30 分鐘、或一次超過一小時
     await expect(
-      createBooking({ courtId: courtA, date, start: "19:30", end: "20:30" }),
+      createBooking({ courtId: courtA, date, start: "19:15", end: "20:15" }),
     ).rejects.toThrow("INVALID_TIME");
     await expect(
       createBooking({ courtId: courtA, date, start: "19:00", end: "21:00" }),
@@ -317,6 +339,16 @@ describe("價格", () => {
     expect(await price(date, "12:00", "13:00")).toBe(350);
     expect(await price(date, "13:00", "14:00")).toBe(350);
     expect(await price(date, "14:00", "15:00")).toBe(500);
+  });
+
+  it("跨越價格分界的半點時段按比例計價", async () => {
+    const weekday = nextDate(WEEKDAYS);
+    expect(await price(weekday, "17:30", "18:30")).toBe(425); // 350×0.5 + 500×0.5
+    expect(await price(weekday, "09:30", "10:30")).toBe(350);
+    const weekend = nextDate(WEEKEND);
+    expect(await price(weekend, "11:30", "12:30")).toBe(425); // 500×0.5 + 350×0.5
+    expect(await price(weekend, "13:30", "14:30")).toBe(425);
+    expect(await price(weekend, "12:30", "13:30")).toBe(350);
   });
 
   it("國定假日設為假日時，以假日價格計算", async () => {
@@ -393,7 +425,10 @@ describe("可預約狀態查詢", () => {
         [date],
       ),
     );
-    expect(result.rows).toHaveLength(13 * 5);
+    // 09:00–21:00 每 30 分鐘一個開始時間 = 25 個時段 × 5 面場
+    expect(result.rows).toHaveLength(25 * 5);
+    expect(result.rows.some((row) => row.start_time === "21:00:00")).toBe(true);
+    expect(result.rows.some((row) => row.start_time === "21:30:00")).toBe(false);
     expect(Object.keys(result.rows[0]).sort()).toEqual(
       ["court_id", "court_name", "end_time", "price", "sort_order", "start_time", "status"].sort(),
     );
@@ -403,6 +438,14 @@ describe("可預約狀態查詢", () => {
     expect(at19.find((row) => row.court_name === "B場")?.status).toBe("blocked");
     expect(at19.find((row) => row.court_name === "C場")?.status).toBe("available");
     expect(at19.find((row) => row.court_name === "C場")?.price).toBe(500);
+
+    // A 場 19:00–20:00 已預約 → 18:30 與 19:30 開始的時段也會重疊
+    const aAt = (start: string) =>
+      result.rows.find((row) => row.court_name === "A場" && row.start_time === start)?.status;
+    expect(aAt("18:30:00")).toBe("booked");
+    expect(aAt("19:30:00")).toBe("booked");
+    expect(aAt("18:00:00")).toBe("available");
+    expect(aAt("20:00:00")).toBe("available");
   });
 
   it("休館日顯示 closed", async () => {

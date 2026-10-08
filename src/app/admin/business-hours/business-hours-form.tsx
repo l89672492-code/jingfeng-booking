@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { buttonBrand } from "@/components/ui/styles";
 import { formatTime } from "@/lib/booking/dates";
-import { hourlyOptions } from "@/lib/booking/time-options";
+import { timeOptions } from "@/lib/booking/time-options";
 import type { BusinessHoursRow } from "@/types/database";
 
 import { MessageText, useMutation } from "../_components/use-mutation";
@@ -13,7 +13,7 @@ import { saveBusinessHoursAction } from "../config-actions";
 const DAY_LABELS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 // 以星期一為第一列顯示
 const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const HOURS = hourlyOptions();
+const HOURS = timeOptions();
 const cell = "rounded-lg border border-zinc-300 bg-white px-2 py-1.5 disabled:opacity-40";
 
 type Row = { dayOfWeek: number; openTime: string; closeTime: string; isOpen: boolean };

@@ -168,11 +168,10 @@ async function CalendarContent({ searchParams }: { searchParams: Promise<{ date?
               </tr>
             </thead>
             <tbody>
-              {slots.map(([start, end]) => (
+              {slots.map(([start]) => (
                 <tr key={start}>
                   <td className="border-b border-zinc-100 py-1 pr-2 align-top text-zinc-600">
                     {formatTime(start)}
-                    <span className="block text-[11px] text-zinc-400">–{formatTime(end)}</span>
                   </td>
                   {courts.map((court) => {
                     const booking = bookingAt(court.id, start);
@@ -210,7 +209,9 @@ async function CalendarContent({ searchParams }: { searchParams: Promise<{ date?
             </tbody>
           </table>
         )}
-        <p className="mt-3 text-xs text-zinc-500">點擊預約可查看詳細資料；點擊「可租」可直接新增預約。</p>
+        <p className="mt-3 text-xs text-zinc-500">
+          每列為一個開始時間（每 30 分鐘），預約會佔用它實際涵蓋的所有列。點擊預約可查看詳細資料；點擊「可租」可直接新增一小時的預約。
+        </p>
       </section>
 
       <MonthOverview date={date} today={today} counts={counts} />

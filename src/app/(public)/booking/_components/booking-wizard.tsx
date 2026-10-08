@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import {
   buttonPrimary,
@@ -10,32 +10,21 @@ import {
   inputClass,
   labelClass,
 } from "@/components/ui/styles";
-import {
-  courtsForSlot,
-  DISPLAY_STATUS_LABELS,
-  summarizeTimeSlots,
-  toDisplayStatus,
-  type DisplayStatus,
-} from "@/lib/booking/availability";
-import {
-  addDays,
-  formatDateWithWeekday,
-  formatTimeRange,
-  monthRange,
-  shiftMonth,
-} from "@/lib/booking/dates";
+import { courtsForSlot, summarizeTimeSlots } from "@/lib/booking/availability";
+import { addDays, formatDateWithWeekday, formatTimeRange, weekdayName } from "@/lib/booking/dates";
 import { GENERIC_ERROR_MESSAGE } from "@/lib/booking/errors";
 import { customerBookingSchema, fieldErrors } from "@/lib/booking/validation";
 import type { DateStatus, DayAvailabilityRow } from "@/types/database";
 
 import { submitBooking } from "../actions";
 
-import { MonthCalendar } from "./month-calendar";
+import { CourtSlotGrid } from "./court-slot-grid";
+import { DateStrip, type DateOption } from "./date-strip";
 
-const STEPS = ["選擇日期", "選擇時間", "選擇場地", "確認費用", "填寫資料", "確認預約"] as const;
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+const STEPS = ["選擇場地時段", "填寫資料", "確認預約"] as const;
+type Step = 1 | 2 | 3;
 
-/** 這些錯誤代表選的時段／場地已不能預約，要回到選場地重新選 */
+/** 這些錯誤代表選的時段／場地已不能預約，要回到第一步重新選 */
 const RESELECT_CODES = new Set([
   "BOOKING_CONFLICT",
   "COURT_NOT_FOUND",
@@ -49,20 +38,6 @@ const RESELECT_CODES = new Set([
   "PRICE_NOT_FOUND",
 ]);
 
-const STATUS_STYLES: Record<DisplayStatus, string> = {
-  available: "border-brand-300 bg-white text-zinc-900 hover:border-brand-500 hover:bg-brand-50",
-  booked: "border-zinc-200 bg-zinc-100 text-zinc-400",
-  unavailable: "border-zinc-200 bg-zinc-100 text-zinc-400",
-  closed: "border-zinc-200 bg-zinc-100 text-zinc-400",
-};
-
-const STATUS_BADGE: Record<DisplayStatus, string> = {
-  available: "bg-green-100 text-green-800",
-  booked: "bg-red-100 text-red-700",
-  unavailable: "bg-zinc-200 text-zinc-600",
-  closed: "bg-zinc-200 text-zinc-600",
-};
-
 type Props = {
   today: string;
   maxDaysAhead: number;
@@ -75,6 +50,11 @@ function formatPrice(price: number | null) {
   return price === null ? "—" : `${price.toLocaleString("zh-TW")}元`;
 }
 
+/** 10/12（一） */
+function shortDate(date: string) {
+  return `${Number(date.slice(5, 7))}/${Number(date.slice(8))}（${weekdayName(date).slice(2)}）`;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   const body = await response.json().catch(() => ({}));
@@ -84,52 +64,48 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }: Props) {
   const lastBookableDate = addDays(today, maxDaysAhead);
-  const firstMonth = today.slice(0, 7);
-  const lastMonth = lastBookableDate.slice(0, 7);
 
   const [step, setStep] = useState<Step>(1);
-  const [month, setMonth] = useState(firstMonth);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedStart, setSelectedStart] = useState<string | null>(null);
-  const [selectedCourtId, setSelectedCourtId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ courtId: string; startTime: string } | null>(null);
   const [form, setForm] = useState<CustomerForm>({ name: "", phone: "", email: "", note: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [dayVersion, setDayVersion] = useState(0);
   const [isSubmitting, startSubmit] = useTransition();
 
-  // ---- 月曆資料 ----
-  const [monthData, setMonthData] = useState<{
-    month: string;
-    statuses: Map<string, { status: DateStatus; holidayName: string | null }> | null;
-    error: string | null;
-  } | null>(null);
+  // ---- 可預約日期（今天起 maxDaysAhead 天）----
+  const [dates, setDates] = useState<{ list: DateOption[] | null; error: string | null }>({
+    list: null,
+    error: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    const { from, to } = monthRange(month);
     fetchJson<{ dates: { date: string; status: DateStatus; holiday_name: string | null }[] }>(
-      `/api/availability/dates?from=${from}&to=${to}`,
+      `/api/availability/dates?from=${today}&to=${lastBookableDate}`,
     )
       .then((body) => {
         if (cancelled) return;
-        const statuses = new Map(
-          body.dates.map((row) => [row.date, { status: row.status, holidayName: row.holiday_name }]),
-        );
-        setMonthData({ month, statuses, error: null });
+        const list = body.dates.map((row) => ({
+          date: row.date,
+          status: row.status,
+          holidayName: row.holiday_name,
+        }));
+        setDates({ list, error: null });
+        // 預設選第一個可預約的日期，讓場地表直接顯示
+        const firstOpen = list.find((row) => row.status === "open");
+        if (firstOpen) setSelectedDate((current) => current ?? firstOpen.date);
       })
       .catch((error: Error) => {
-        if (!cancelled) setMonthData({ month, statuses: null, error: error.message });
+        if (!cancelled) setDates({ list: null, error: error.message });
       });
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [today, lastBookableDate]);
 
-  const monthStatuses = monthData?.month === month ? monthData.statuses : null;
-  const monthError = monthData?.month === month ? monthData.error : null;
-
-  // ---- 單日場地資料 ----
+  // ---- 選定日期的場地 × 時段 ----
   const dayKey = selectedDate ? `${selectedDate}#${dayVersion}` : null;
   const [dayData, setDayData] = useState<{
     key: string;
@@ -137,12 +113,30 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
     error: string | null;
   } | null>(null);
 
+  // 自動選的日期若已沒有任何可預約時段（例如今天已接近打烊），自動跳到下一個可預約日
+  const autoPickRef = useRef(true);
+  const dateListRef = useRef<DateOption[] | null>(null);
+  useEffect(() => {
+    dateListRef.current = dates.list;
+  }, [dates.list]);
+
   useEffect(() => {
     if (!selectedDate || !dayKey) return;
     let cancelled = false;
     fetchJson<{ slots: DayAvailabilityRow[] }>(`/api/availability/day?date=${selectedDate}`)
       .then((body) => {
-        if (!cancelled) setDayData({ key: dayKey, rows: body.slots, error: null });
+        if (cancelled) return;
+        if (autoPickRef.current && !body.slots.some((row) => row.status === "available")) {
+          const next = dateListRef.current?.find(
+            (row) => row.status === "open" && row.date > selectedDate,
+          );
+          if (next) {
+            setSelectedDate(next.date);
+            return;
+          }
+        }
+        autoPickRef.current = false;
+        setDayData({ key: dayKey, rows: body.slots, error: null });
       })
       .catch((error: Error) => {
         if (!cancelled) setDayData({ key: dayKey, rows: null, error: error.message });
@@ -154,41 +148,36 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
 
   const dayRows = dayData?.key === dayKey ? dayData.rows : null;
   const dayError = dayData?.key === dayKey ? dayData.error : null;
-  const timeSlots = dayRows ? summarizeTimeSlots(dayRows) : [];
-  const selectedSlot = timeSlots.find((slot) => slot.startTime === selectedStart) ?? null;
-  const courts = dayRows && selectedStart ? courtsForSlot(dayRows, selectedStart) : [];
-  const selectedCourt = courts.find((court) => court.courtId === selectedCourtId) ?? null;
+
+  // 選擇的格子必須仍是「可預約」才算有效（重新整理後可能已被別人訂走）
+  const selectedSlot =
+    dayRows && selected
+      ? (summarizeTimeSlots(dayRows).find((slot) => slot.startTime === selected.startTime) ?? null)
+      : null;
+  const selectedCourt =
+    dayRows && selected
+      ? (courtsForSlot(dayRows, selected.startTime).find(
+          (court) => court.courtId === selected.courtId && court.status === "available",
+        ) ?? null)
+      : null;
+  const hasSelection = Boolean(selectedDate && selectedSlot && selectedCourt);
 
   function goTo(next: Step) {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function refreshDay() {
-    setDayVersion((version) => version + 1);
-  }
-
-  // ---- 步驟操作 ----
   function selectDate(date: string) {
+    autoPickRef.current = false;
+    if (date === selectedDate) return;
     setSelectedDate(date);
-    setSelectedStart(null);
-    setSelectedCourtId(null);
+    setSelected(null);
     setNotice(null);
-    goTo(2);
   }
 
-  function selectTime(startTime: string) {
-    setSelectedStart(startTime);
-    setSelectedCourtId(null);
+  function selectCell(courtId: string, startTime: string) {
+    setSelected({ courtId, startTime });
     setNotice(null);
-    refreshDay();
-    goTo(3);
-  }
-
-  function selectCourt(courtId: string) {
-    setSelectedCourtId(courtId);
-    setNotice(null);
-    goTo(4);
   }
 
   function buildInput() {
@@ -218,14 +207,14 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
       // 成功時 server 會直接導向成功頁，只有失敗才會回到這裡
       if (result.code && RESELECT_CODES.has(result.code)) {
         setNotice(result.error);
-        setSelectedCourtId(null);
-        refreshDay();
-        goTo(3);
+        setSelected(null);
+        setDayVersion((version) => version + 1);
+        goTo(1);
         return;
       }
       if (Object.keys(result.fieldErrors).length > 0) {
         setErrors(result.fieldErrors);
-        goTo(5);
+        goTo(2);
         return;
       }
       setNotice(result.error);
@@ -237,39 +226,26 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
     if (errors[field]) setErrors((previous) => ({ ...previous, [field]: "" }));
   }
 
-  // ---- 畫面 ----
-  const summary = (
-    <dl className="grid grid-cols-[4.5rem_1fr] gap-y-2 text-base">
-      <dt className="text-zinc-500">日期</dt>
-      <dd className="font-medium">{selectedDate && formatDateWithWeekday(selectedDate)}</dd>
-      <dt className="text-zinc-500">時間</dt>
-      <dd className="font-medium">
-        {selectedSlot && formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)}
-      </dd>
-      <dt className="text-zinc-500">場地</dt>
-      <dd className="font-medium">{selectedCourt?.courtName}</dd>
-      <dt className="text-zinc-500">費用</dt>
-      <dd className="text-xl font-bold text-accent-600">{formatPrice(selectedCourt?.price ?? null)}</dd>
-    </dl>
-  );
+  const selectionSummary =
+    hasSelection && selectedDate && selectedSlot && selectedCourt
+      ? `${shortDate(selectedDate)} ${formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)} ${selectedCourt.courtName}`
+      : null;
 
   return (
-    <div>
+    <div className={step === 1 ? "pb-24" : undefined}>
       {/* 進度 */}
-      <ol className="mb-5 grid grid-cols-6 gap-1" aria-label="預約步驟">
+      <ol className="mb-5 grid grid-cols-3 gap-2" aria-label="預約步驟">
         {STEPS.map((label, index) => {
           const number = index + 1;
           const state = number < step ? "done" : number === step ? "current" : "todo";
           return (
-            <li key={label} className="flex flex-col items-center gap-1 text-center">
+            <li key={label} className="flex flex-col gap-1 text-center">
+              <span className={`h-1.5 w-full rounded-full ${state === "todo" ? "bg-zinc-200" : "bg-brand-600"}`} />
               <span
-                className={`h-1.5 w-full rounded-full ${state === "todo" ? "bg-zinc-200" : "bg-brand-600"}`}
-              />
-              <span
-                className={`text-[11px] leading-tight sm:text-xs ${state === "current" ? "font-bold text-brand-700" : "text-zinc-500"}`}
+                className={`text-xs ${state === "current" ? "font-bold text-brand-700" : "text-zinc-500"}`}
                 aria-current={state === "current" ? "step" : undefined}
               >
-                {label}
+                {number}. {label}
               </span>
             </li>
           );
@@ -282,160 +258,66 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
         </div>
       )}
 
-      {/* Step 1：日期 */}
+      {/* Step 1：日期 + 時間 + 場地 */}
       {step === 1 && (
-        <section className={cardClass}>
-          <h2 className="mb-4 text-lg font-bold">Step 1　選擇日期</h2>
-          <MonthCalendar
-            month={month}
-            today={today}
-            statuses={monthStatuses}
-            loading={monthData?.month !== month}
-            selectedDate={selectedDate}
-            canGoPrev={month > firstMonth}
-            canGoNext={month < lastMonth}
-            onPrev={() => setMonth(shiftMonth(month, -1))}
-            onNext={() => setMonth(shiftMonth(month, 1))}
-            onSelect={selectDate}
-          />
-          {monthError && <p className={errorTextClass}>{monthError}</p>}
-          <p className="mt-4 text-sm text-zinc-500">
-            可預約今天起 {maxDaysAhead} 天內的場地。
-          </p>
-        </section>
-      )}
+        <>
+          <section className={cardClass}>
+            <h2 className="mb-3 text-lg font-bold">選擇日期</h2>
+            <DateStrip dates={dates.list} today={today} selectedDate={selectedDate} onSelect={selectDate} />
+            {dates.error && <p className={errorTextClass}>{dates.error}</p>}
+            {dates.list && !dates.list.some((row) => row.status === "open") && (
+              <p className="mt-3 text-zinc-500">目前沒有可預約的日期。</p>
+            )}
+          </section>
 
-      {/* Step 2：時間 */}
-      {step === 2 && selectedDate && (
-        <section className={cardClass}>
-          <h2 className="text-lg font-bold">Step 2　選擇時間</h2>
-          <p className="mb-4 mt-1 text-zinc-600">{formatDateWithWeekday(selectedDate)}</p>
-
-          {dayError && <p className={errorTextClass}>{dayError}</p>}
-          {!dayRows && !dayError && <p className="py-6 text-center text-zinc-500">載入中…</p>}
-          {dayRows && timeSlots.length === 0 && (
-            <p className="py-6 text-center text-zinc-500">這天沒有開放預約的時段。</p>
-          )}
-          {dayRows && dayRows.length > 0 && dayRows.every((row) => row.status === "closed") && (
-            <p className="mb-3 rounded-xl bg-zinc-100 p-3 text-center text-zinc-600">這天休館。</p>
+          {selectedDate && (
+            <section className={`${cardClass} mt-4`}>
+              <h2 className="text-lg font-bold">選擇時間與場地</h2>
+              <p className="mb-3 mt-1 text-sm text-zinc-600">
+                {formatDateWithWeekday(selectedDate)}・點一格選擇
+              </p>
+              {dayError && <p className={errorTextClass}>{dayError}</p>}
+              {!dayRows && !dayError && <p className="py-8 text-center text-zinc-500">載入中…</p>}
+              {dayRows && <CourtSlotGrid rows={dayRows} selected={selected} onSelect={selectCell} />}
+            </section>
           )}
 
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {timeSlots.map((slot) => {
-              const full = slot.availableCount === 0;
-              return (
-                <li key={slot.startTime}>
-                  <button
-                    type="button"
-                    disabled={full}
-                    onClick={() => selectTime(slot.startTime)}
-                    className={`flex min-h-14 w-full items-center justify-between rounded-xl border px-4 text-left transition-colors ${
-                      full
-                        ? "border-zinc-200 bg-zinc-50 text-zinc-400"
-                        : "border-zinc-300 bg-white hover:border-brand-500 hover:bg-brand-50"
-                    }`}
-                  >
-                    <span className="text-lg font-bold">
-                      {formatTimeRange(slot.startTime, slot.endTime)}
-                    </span>
-                    <span className="text-right text-sm">
-                      {full ? (
-                        "不可預約"
-                      ) : (
-                        <>
-                          <span className="block font-bold text-accent-600">
-                            {formatPrice(slot.price)}
-                          </span>
-                          <span className="text-zinc-500">剩 {slot.availableCount} 面</span>
-                        </>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="mt-5">
-            <button type="button" className={buttonSecondary} onClick={() => goTo(1)}>
-              ‹ 重新選擇日期
-            </button>
+          {/* 底部固定列：目前選擇 + 下一步 */}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur">
+            <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
+              <p className="min-w-0 flex-1 text-sm">
+                {selectionSummary ? (
+                  <>
+                    <span className="block text-xs text-zinc-500">已選擇</span>
+                    <span className="block truncate font-bold text-zinc-900">{selectionSummary}</span>
+                  </>
+                ) : (
+                  <span className="text-zinc-500">請選擇日期、時間與場地</span>
+                )}
+              </p>
+              <button
+                type="button"
+                className={`${buttonPrimary} shrink-0`}
+                disabled={!hasSelection}
+                onClick={() => goTo(2)}
+              >
+                下一步
+              </button>
+            </div>
           </div>
-        </section>
+        </>
       )}
 
-      {/* Step 3：場地 */}
-      {step === 3 && selectedDate && selectedStart && (
+      {/* Step 2：資料 */}
+      {step === 2 && hasSelection && (
         <section className={cardClass}>
-          <h2 className="text-lg font-bold">Step 3　選擇場地</h2>
-          <p className="mb-4 mt-1 text-zinc-600">
-            {formatDateWithWeekday(selectedDate)}
-            {selectedSlot && `　${formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)}`}
-          </p>
-
-          {dayError && <p className={errorTextClass}>{dayError}</p>}
-          {!dayRows && !dayError && <p className="py-6 text-center text-zinc-500">載入中…</p>}
-
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {courts.map((court) => {
-              const display = toDisplayStatus(court.status);
-              const selectable = display === "available";
-              return (
-                <li key={court.courtId}>
-                  <button
-                    type="button"
-                    disabled={!selectable}
-                    onClick={() => selectCourt(court.courtId)}
-                    className={`flex min-h-20 w-full flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 transition-colors ${STATUS_STYLES[display]}`}
-                  >
-                    <span className="text-xl font-bold">{court.courtName}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[display]}`}>
-                      {DISPLAY_STATUS_LABELS[display]}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          {dayRows && courts.length > 0 && courts.every((court) => court.status !== "available") && (
-            <p className="mt-4 text-center text-zinc-600">這個時段已沒有可預約的場地，請選擇其他時間。</p>
-          )}
-
-          <div className="mt-5">
-            <button type="button" className={buttonSecondary} onClick={() => goTo(2)}>
-              ‹ 重新選擇時間
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Step 4：費用 */}
-      {step === 4 && selectedCourt && (
-        <section className={cardClass}>
-          <h2 className="mb-4 text-lg font-bold">Step 4　確認費用</h2>
-          {summary}
-          <p className="mt-4 text-sm text-zinc-500">費用依場館公告價格計算，請於現場付款。</p>
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-            <button type="button" className={buttonSecondary} onClick={() => goTo(3)}>
-              ‹ 重新選擇場地
-            </button>
-            <button type="button" className={buttonPrimary} onClick={() => goTo(5)}>
-              下一步：填寫資料
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Step 5：資料 */}
-      {step === 5 && selectedCourt && (
-        <section className={cardClass}>
-          <h2 className="mb-4 text-lg font-bold">Step 5　填寫預約資料</h2>
+          <h2 className="text-lg font-bold">填寫預約資料</h2>
+          <p className="mb-4 mt-1 text-sm text-zinc-600">{selectionSummary}</p>
           <form
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
-              if (validateForm()) goTo(6);
+              if (validateForm()) goTo(3);
             }}
             className="space-y-4"
           >
@@ -505,22 +387,36 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
               {errors.note && <p className={errorTextClass}>{errors.note}</p>}
             </div>
             <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-between">
-              <button type="button" className={buttonSecondary} onClick={() => goTo(4)}>
-                ‹ 上一步
+              <button type="button" className={buttonSecondary} onClick={() => goTo(1)}>
+                ‹ 重新選擇場地時段
               </button>
               <button type="submit" className={buttonPrimary}>
-                下一步：確認預約
+                下一步：確認費用
               </button>
             </div>
           </form>
         </section>
       )}
 
-      {/* Step 6：確認 */}
-      {step === 6 && selectedCourt && (
+      {/* Step 3：確認費用與預約 */}
+      {step === 3 && hasSelection && selectedDate && selectedSlot && selectedCourt && (
         <section className={cardClass}>
-          <h2 className="mb-4 text-lg font-bold">Step 6　確認預約</h2>
-          {summary}
+          <h2 className="mb-4 text-lg font-bold">確認預約</h2>
+
+          <div className="mb-4 rounded-2xl bg-accent-50 p-4 text-center">
+            <p className="text-sm text-accent-700">場地費用</p>
+            <p className="text-3xl font-bold text-accent-600">{formatPrice(selectedCourt.price)}</p>
+            <p className="mt-1 text-xs text-accent-700">請於現場付款</p>
+          </div>
+
+          <dl className="grid grid-cols-[4.5rem_1fr] gap-y-2 text-base">
+            <dt className="text-zinc-500">日期</dt>
+            <dd className="font-medium">{formatDateWithWeekday(selectedDate)}</dd>
+            <dt className="text-zinc-500">時間</dt>
+            <dd className="font-medium">{formatTimeRange(selectedSlot.startTime, selectedSlot.endTime)}</dd>
+            <dt className="text-zinc-500">場地</dt>
+            <dd className="font-medium">{selectedCourt.courtName}</dd>
+          </dl>
           <hr className="my-4 border-zinc-200" />
           <dl className="grid grid-cols-[4.5rem_1fr] gap-y-2 text-base">
             <dt className="text-zinc-500">姓名</dt>
@@ -540,24 +436,14 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
               </>
             )}
           </dl>
-          <p className="mt-4 rounded-xl bg-accent-50 p-3 text-sm text-accent-700">
+          <p className="mt-4 text-sm text-zinc-500">
             開始前 {cancellationDeadlineHours} 小時以前可在「查詢預約」自行取消。
           </p>
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-            <button
-              type="button"
-              className={buttonSecondary}
-              onClick={() => goTo(5)}
-              disabled={isSubmitting}
-            >
+            <button type="button" className={buttonSecondary} onClick={() => goTo(2)} disabled={isSubmitting}>
               ‹ 修改資料
             </button>
-            <button
-              type="button"
-              className={buttonPrimary}
-              onClick={confirmBooking}
-              disabled={isSubmitting}
-            >
+            <button type="button" className={buttonPrimary} onClick={confirmBooking} disabled={isSubmitting}>
               {isSubmitting ? "預約中…" : "確認預約"}
             </button>
           </div>

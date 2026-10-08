@@ -3,13 +3,13 @@
 import { useState } from "react";
 
 import { buttonBrand, inputClass, labelClass } from "@/components/ui/styles";
-import { addOneHour, hourlyOptions } from "@/lib/booking/time-options";
+import { addOneHour, timeOptions } from "@/lib/booking/time-options";
 import type { CourtRow } from "@/types/database";
 
 import { MessageText, useMutation } from "../_components/use-mutation";
 import { createBlockedSlotAction } from "../config-actions";
 
-const HOURS = hourlyOptions();
+const HOURS = timeOptions();
 
 export function BlockedSlotForm({ courts, today }: { courts: CourtRow[]; today: string }) {
   const [courtId, setCourtId] = useState("");
