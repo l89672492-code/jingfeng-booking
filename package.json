@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "check:bundle": "node scripts/check-client-bundle.mjs",
     "db:push": "supabase db push --include-seed"
   },
   "engines": {
