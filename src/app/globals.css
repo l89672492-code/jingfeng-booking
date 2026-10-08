@@ -1,27 +1,44 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* 品牌色：紫 */
+  --color-brand-50: #f6f1fb;
+  --color-brand-100: #ece1f7;
+  --color-brand-200: #d8c2ee;
+  --color-brand-300: #bb97e0;
+  --color-brand-500: #7d3cb5;
+  --color-brand-600: #6a2d9c;
+  --color-brand-700: #57247f;
+  --color-brand-800: #461d66;
+  --color-brand-900: #2f1345;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* 品牌色：橘 */
+  --color-accent-50: #fff5eb;
+  --color-accent-100: #ffe7cc;
+  --color-accent-200: #ffcf99;
+  --color-accent-500: #f28a1e;
+  --color-accent-600: #dd7410;
+  --color-accent-700: #b75c0c;
+
   --font-sans:
     "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC",
     system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #f7f7f8;
+  color: #1f1f23;
   font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 手機輸入框至少 16px，避免 iOS 自動放大 */
+input,
+select,
+textarea {
+  font-size: 16px;
 }
