@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createPublicClient } from "@/lib/supabase/public";
 
 export type FacilityInfo = {
@@ -33,12 +35,15 @@ export async function getPublicSettings(): Promise<FacilityInfo> {
   };
 }
 
-/** 讀取失敗時回傳 null（頁面改顯示提示，不讓整頁壞掉） */
-export async function getPublicSettingsSafe(): Promise<FacilityInfo | null> {
+/**
+ * 讀取失敗時回傳 null（頁面改顯示提示，不讓整頁壞掉）。
+ * 以 React cache 包裝：同一個請求中首頁與頁尾共用一次查詢。
+ */
+export const getPublicSettingsSafe = cache(async (): Promise<FacilityInfo | null> => {
   try {
     return await getPublicSettings();
   } catch (error) {
     console.error("[settings] 讀取場館設定失敗", error);
     return null;
   }
-}
+});

@@ -290,6 +290,7 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
             month={month}
             today={today}
             statuses={monthStatuses}
+            loading={monthData?.month !== month}
             selectedDate={selectedDate}
             canGoPrev={month > firstMonth}
             canGoNext={month < lastMonth}

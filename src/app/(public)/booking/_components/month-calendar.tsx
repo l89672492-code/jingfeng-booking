@@ -9,6 +9,7 @@ type Props = {
   month: string; // YYYY-MM
   today: string;
   statuses: Map<string, { status: DateStatus; holidayName: string | null }> | null;
+  loading: boolean;
   selectedDate: string | null;
   canGoPrev: boolean;
   canGoNext: boolean;
@@ -21,6 +22,7 @@ export function MonthCalendar({
   month,
   today,
   statuses,
+  loading,
   selectedDate,
   canGoPrev,
   canGoNext,
@@ -115,9 +117,7 @@ export function MonthCalendar({
         })}
       </div>
 
-      {statuses === null && (
-        <p className="mt-3 text-center text-sm text-zinc-500">載入中…</p>
-      )}
+      {loading && <p className="mt-3 text-center text-sm text-zinc-500">載入中…</p>}
     </div>
   );
 }
