@@ -118,6 +118,13 @@ const settingsSchema = z.object({
     .min(0, "不可小於 0")
     .max(365, "最多 365 天")
     .transform(String),
+  booking_max_minutes: z.coerce
+    .number("請輸入數字")
+    .int("請輸入整數")
+    .min(60, "最少 60 分鐘")
+    .max(720, "最多 720 分鐘（12 小時）")
+    .refine((value) => value % 30 === 0, "必須是 30 的倍數")
+    .transform(String),
   facility_name: z.string().trim().min(1, "請輸入場館名稱").max(50),
   facility_phone: z.string().trim().min(1, "請輸入電話").max(30),
   facility_address: z.string().trim().min(1, "請輸入地址").max(100),

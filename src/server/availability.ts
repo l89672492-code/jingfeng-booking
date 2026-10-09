@@ -16,22 +16,25 @@ export async function getDateStatuses(from: string, to: string) {
   return data;
 }
 
-/** 某天所有場地 × 時段的狀態 */
-export async function getDayAvailability(date: string) {
+/** 某天所有場地 × 時段的狀態；durationMinutes 為租用時間（未指定則為最短時間） */
+export async function getDayAvailability(date: string, durationMinutes?: number) {
   const supabase = createPublicClient();
-  const { data, error } = await supabase.rpc("get_day_availability", { p_date: date });
+  const { data, error } = await supabase.rpc("get_day_availability", {
+    p_date: date,
+    ...(durationMinutes ? { p_duration_minutes: durationMinutes } : {}),
+  });
   if (error) throw error;
   return data;
 }
 
 /** 某天的時段（含可預約場地數與價格） */
-export async function getAvailableTimeSlots(date: string) {
-  return summarizeTimeSlots(await getDayAvailability(date));
+export async function getAvailableTimeSlots(date: string, durationMinutes?: number) {
+  return summarizeTimeSlots(await getDayAvailability(date, durationMinutes));
 }
 
 /** 某天某時段各場地的狀態 */
-export async function getAvailableCourts(date: string, startTime: string) {
-  return courtsForSlot(await getDayAvailability(date), startTime);
+export async function getAvailableCourts(date: string, startTime: string, durationMinutes?: number) {
+  return courtsForSlot(await getDayAvailability(date, durationMinutes), startTime);
 }
 
 /** 依資料庫價格規則計算費用（找不到規則回傳 null） */

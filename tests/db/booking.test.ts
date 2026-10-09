@@ -278,13 +278,55 @@ describe("建立預約", () => {
     await expect(
       createBooking({ courtId: courtA, date, start: "22:00", end: "23:00" }),
     ).rejects.toThrow("OUTSIDE_BUSINESS_HOURS");
-    // 不對齊 30 分鐘、或一次超過一小時
+    // 不對齊 30 分鐘、短於 1 小時、或超過最長租用時間（4 小時）
     await expect(
       createBooking({ courtId: courtA, date, start: "19:15", end: "20:15" }),
     ).rejects.toThrow("INVALID_TIME");
     await expect(
-      createBooking({ courtId: courtA, date, start: "19:00", end: "21:00" }),
+      createBooking({ courtId: courtA, date, start: "19:00", end: "19:30" }),
     ).rejects.toThrow("INVALID_TIME");
+    await expect(
+      createBooking({ courtId: courtA, date, start: "10:00", end: "14:30" }),
+    ).rejects.toThrow("INVALID_TIME");
+  });
+
+  it("可以一次租多個小時，價格依實際時段加總", async () => {
+    const date = nextDate(WEEKDAYS);
+    // 平日 17:00–19:00 = 350 + 500
+    const twoHours = await createBooking({ courtId: courtA, date, start: "17:00", end: "19:00" });
+    expect(twoHours.price).toBe(850);
+    // 1.5 小時：19:30–21:00 = 500 × 1.5
+    const ninety = await createBooking({ courtId: courtA, date, start: "19:30", end: "21:00", phone: "0922333444" });
+    expect(ninety.price).toBe(750);
+    // 最長 4 小時：10:00–14:00 = 350 × 4
+    const four = await createBooking({ courtId: courtB, date, start: "10:00", end: "14:00", phone: "0933444555" });
+    expect(four.price).toBe(1400);
+  });
+
+  it("多小時預約與既有預約部分重疊時不能預約", async () => {
+    const date = nextDate(WEEKDAYS);
+    await createBooking({ courtId: courtA, date, start: "20:00", end: "21:00" });
+    await expect(
+      createBooking({ courtId: courtA, date, start: "18:30", end: "20:30", phone: "0922333444" }),
+    ).rejects.toThrow("BOOKING_CONFLICT");
+    await expect(
+      createBooking({ courtId: courtA, date, start: "18:00", end: "20:00", phone: "0922333444" }),
+    ).resolves.toMatchObject({ status: "confirmed" });
+  });
+
+  it("最長租用時間由系統設定控制", async () => {
+    const date = nextDate(WEEKDAYS);
+    await db.query("update public.system_settings set value = '120' where key = 'booking_max_minutes'");
+    try {
+      await expect(
+        createBooking({ courtId: courtA, date, start: "10:00", end: "13:00" }),
+      ).rejects.toThrow("INVALID_TIME");
+      await expect(
+        createBooking({ courtId: courtA, date, start: "10:00", end: "12:00" }),
+      ).resolves.toMatchObject({ status: "confirmed" });
+    } finally {
+      await db.query("update public.system_settings set value = '240' where key = 'booking_max_minutes'");
+    }
   });
 
   it("驗證姓名、手機與 Email", async () => {
@@ -446,6 +488,34 @@ describe("可預約狀態查詢", () => {
     expect(aAt("19:30:00")).toBe("booked");
     expect(aAt("18:00:00")).toBe("available");
     expect(aAt("20:00:00")).toBe("available");
+  });
+
+  it("可查詢指定租用時數的狀態與價格（2 小時）", async () => {
+    const date = nextDate(WEEKDAYS);
+    await createBooking({ courtId: courtA, date, start: "20:00", end: "21:00" });
+
+    const result = await asRole(db, "anon", null, (tx) =>
+      tx.query<{ court_name: string; start_time: string; end_time: string; status: string; price: number }>(
+        "select * from public.get_day_availability($1, 120)",
+        [date],
+      ),
+    );
+    // 2 小時：開始時間 09:00–20:00，每 30 分鐘一個 = 23 個 × 5 面場
+    expect(result.rows).toHaveLength(23 * 5);
+    const row = (court: string, start: string) =>
+      result.rows.find((r) => r.court_name === court && r.start_time === start);
+    expect(row("C場", "17:00:00")).toMatchObject({ end_time: "19:00:00", price: 850, status: "available" });
+    // A 場 20:00 有預約 → 18:30 開始的 2 小時（到 20:30）會重疊；18:00–20:00 不會
+    expect(row("A場", "18:30:00")?.status).toBe("booked");
+    expect(row("A場", "18:00:00")?.status).toBe("available");
+
+    // 超過上限或不是 30 分鐘倍數 → 拒絕
+    await expect(
+      asRole(db, "anon", null, (tx) => tx.query("select * from public.get_day_availability($1, 300)", [date])),
+    ).rejects.toThrow("INVALID_INPUT");
+    await expect(
+      asRole(db, "anon", null, (tx) => tx.query("select * from public.get_day_availability($1, 75)", [date])),
+    ).rejects.toThrow("INVALID_INPUT");
   });
 
   it("休館日顯示 closed", async () => {

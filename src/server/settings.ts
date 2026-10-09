@@ -11,6 +11,12 @@ export type FacilityInfo = {
   line: string;
   cancellationDeadlineHours: number;
   bookingMaxDaysAhead: number;
+  /** 最短租用時間（分鐘） */
+  slotDurationMinutes: number;
+  /** 開始時間與租用時數的間隔（分鐘） */
+  slotStepMinutes: number;
+  /** 球友一次最長可租用的時間（分鐘） */
+  bookingMaxMinutes: number;
 };
 
 function toInt(value: string | undefined, fallback: number) {
@@ -32,6 +38,9 @@ export async function getPublicSettings(): Promise<FacilityInfo> {
     line: settings.get("facility_line") ?? "",
     cancellationDeadlineHours: toInt(settings.get("cancellation_deadline_hours"), 2),
     bookingMaxDaysAhead: toInt(settings.get("booking_max_days_ahead"), 30),
+    slotDurationMinutes: toInt(settings.get("slot_duration_minutes"), 60),
+    slotStepMinutes: toInt(settings.get("slot_step_minutes"), 30),
+    bookingMaxMinutes: toInt(settings.get("booking_max_minutes"), 60),
   };
 }
 

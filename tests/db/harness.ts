@@ -74,6 +74,7 @@ export async function resetData(db: PGlite) {
     update public.courts set status = 'active';
     update public.system_settings set value = '2' where key = 'cancellation_deadline_hours';
     update public.system_settings set value = '30' where key = 'booking_max_days_ahead';
+    update public.system_settings set value = '240' where key = 'booking_max_minutes';
     delete from public.pricing_rules where day_type = 'special';
     update public.pricing_rules set active = true;
   `);

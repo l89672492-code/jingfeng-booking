@@ -22,6 +22,9 @@ async function BookingLoader() {
       today={taipeiToday()}
       maxDaysAhead={facility?.bookingMaxDaysAhead ?? 30}
       cancellationDeadlineHours={facility?.cancellationDeadlineHours ?? 2}
+      minDurationMinutes={facility?.slotDurationMinutes ?? 60}
+      durationStepMinutes={facility?.slotStepMinutes ?? 30}
+      maxDurationMinutes={facility?.bookingMaxMinutes ?? 60}
     />
   );
 }

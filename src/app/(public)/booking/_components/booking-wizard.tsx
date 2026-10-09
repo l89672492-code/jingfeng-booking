@@ -42,9 +42,18 @@ type Props = {
   today: string;
   maxDaysAhead: number;
   cancellationDeadlineHours: number;
+  /** 租用時數選項：最短、間隔、最長（分鐘，來自系統設定） */
+  minDurationMinutes: number;
+  durationStepMinutes: number;
+  maxDurationMinutes: number;
 };
 
 type CustomerForm = { name: string; phone: string; email: string; note: string };
+
+/** 90 → "1.5小時" */
+function formatDuration(minutes: number) {
+  return `${Number((minutes / 60).toFixed(1))}小時`;
+}
 
 function formatPrice(price: number | null) {
   return price === null ? "—" : `${price.toLocaleString("zh-TW")}元`;
@@ -62,11 +71,28 @@ async function fetchJson<T>(url: string): Promise<T> {
   return body as T;
 }
 
-export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }: Props) {
+export function BookingWizard({
+  today,
+  maxDaysAhead,
+  cancellationDeadlineHours,
+  minDurationMinutes,
+  durationStepMinutes,
+  maxDurationMinutes,
+}: Props) {
+  const durationOptions: number[] = [];
+  for (
+    let minutes = minDurationMinutes;
+    minutes <= Math.max(minDurationMinutes, maxDurationMinutes);
+    minutes += Math.max(durationStepMinutes, 1)
+  ) {
+    durationOptions.push(minutes);
+  }
+
   const lastBookableDate = addDays(today, maxDaysAhead);
 
   const [step, setStep] = useState<Step>(1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [durationMinutes, setDurationMinutes] = useState(minDurationMinutes);
   const [selected, setSelected] = useState<{ courtId: string; startTime: string } | null>(null);
   const [form, setForm] = useState<CustomerForm>({ name: "", phone: "", email: "", note: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -106,7 +132,7 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
   }, [today, lastBookableDate]);
 
   // ---- 選定日期的場地 × 時段 ----
-  const dayKey = selectedDate ? `${selectedDate}#${dayVersion}` : null;
+  const dayKey = selectedDate ? `${selectedDate}#${durationMinutes}#${dayVersion}` : null;
   const [dayData, setDayData] = useState<{
     key: string;
     rows: DayAvailabilityRow[] | null;
@@ -123,7 +149,7 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
   useEffect(() => {
     if (!selectedDate || !dayKey) return;
     let cancelled = false;
-    fetchJson<{ slots: DayAvailabilityRow[] }>(`/api/availability/day?date=${selectedDate}`)
+    fetchJson<{ slots: DayAvailabilityRow[] }>(`/api/availability/day?date=${selectedDate}&duration=${durationMinutes}`)
       .then((body) => {
         if (cancelled) return;
         if (autoPickRef.current && !body.slots.some((row) => row.status === "available")) {
@@ -144,7 +170,7 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, dayKey]);
+  }, [selectedDate, durationMinutes, dayKey]);
 
   const dayRows = dayData?.key === dayKey ? dayData.rows : null;
   const dayError = dayData?.key === dayKey ? dayData.error : null;
@@ -171,6 +197,13 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
     autoPickRef.current = false;
     if (date === selectedDate) return;
     setSelectedDate(date);
+    setSelected(null);
+    setNotice(null);
+  }
+
+  function selectDuration(minutes: number) {
+    if (minutes === durationMinutes) return;
+    setDurationMinutes(minutes);
     setSelected(null);
     setNotice(null);
   }
@@ -272,9 +305,38 @@ export function BookingWizard({ today, maxDaysAhead, cancellationDeadlineHours }
 
           {selectedDate && (
             <section className={`${cardClass} mt-4`}>
+              {durationOptions.length > 1 && (
+                <div className="mb-5">
+                  <h2 className="mb-2 text-lg font-bold">租用時數</h2>
+                  <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none]">
+                    <ul className="flex gap-2" aria-label="選擇租用時數">
+                      {durationOptions.map((minutes) => {
+                        const active = minutes === durationMinutes;
+                        return (
+                          <li key={minutes} className="shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => selectDuration(minutes)}
+                              aria-pressed={active}
+                              className={`min-h-11 rounded-full border px-4 text-base font-medium transition-colors ${
+                                active
+                                  ? "border-brand-600 bg-brand-600 text-white"
+                                  : "border-zinc-300 bg-white text-zinc-800 hover:border-brand-400"
+                              }`}
+                            >
+                              {formatDuration(minutes)}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
               <h2 className="text-lg font-bold">選擇時間與場地</h2>
               <p className="mb-3 mt-1 text-sm text-zinc-600">
-                {formatDateWithWeekday(selectedDate)}・點一格選擇
+                {formatDateWithWeekday(selectedDate)}・租用 {formatDuration(durationMinutes)}・點一格選擇開始時間
               </p>
               {dayError && <p className={errorTextClass}>{dayError}</p>}
               {!dayRows && !dayError && <p className="py-8 text-center text-zinc-500">載入中…</p>}

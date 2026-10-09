@@ -10,6 +10,7 @@ import { saveSettingsAction } from "../config-actions";
 const FIELDS = [
   { key: "cancellation_deadline_hours", label: "球友可自行取消的期限（開始前幾小時）", numeric: true },
   { key: "booking_max_days_ahead", label: "最多可預約幾天後的場地", numeric: true },
+  { key: "booking_max_minutes", label: "球友一次最長可租用幾分鐘（30 的倍數，例如 240 = 4 小時）", numeric: true },
   { key: "facility_name", label: "場館名稱", numeric: false },
   { key: "facility_phone", label: "電話", numeric: false },
   { key: "facility_address", label: "地址", numeric: false },

@@ -178,7 +178,7 @@ export type Database = {
         Returns: { date: string; status: DateStatus; holiday_name: string | null }[];
       };
       get_day_availability: {
-        Args: { p_date: string };
+        Args: { p_date: string; p_duration_minutes?: number };
         Returns: DayAvailabilityRow[];
       };
       calculate_price: {
